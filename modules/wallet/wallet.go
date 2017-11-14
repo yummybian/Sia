@@ -96,6 +96,10 @@ type Wallet struct {
 	// initialization.
 	scanLock siasync.TryMutex
 
+	// A separate Mutex is used to protect against concurrent transaction
+	// building.
+	sendLock sync.Mutex
+
 	// The wallet's ThreadGroup tells tracked functions to shut down and
 	// blocks until they have all exited before returning from Close.
 	tg siasync.ThreadGroup

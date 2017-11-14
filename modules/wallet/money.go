@@ -92,6 +92,9 @@ func (w *Wallet) SendSiacoins(amount types.Currency, dest types.UnlockHash) ([]t
 		return nil, modules.ErrLockedWallet
 	}
 
+	w.sendLock.Lock()
+	defer w.sendLock.Unlock()
+
 	_, tpoolFee := w.tpool.FeeEstimation()
 	tpoolFee = tpoolFee.Mul64(750) // Estimated transaction size in bytes
 	output := types.SiacoinOutput{
@@ -136,6 +139,9 @@ func (w *Wallet) SendSiacoinsMulti(outputs []types.SiacoinOutput) ([]types.Trans
 		w.log.Println("Attempt to send coins has failed - wallet is locked")
 		return nil, modules.ErrLockedWallet
 	}
+
+	w.sendLock.Lock()
+	defer w.sendLock.Unlock()
 
 	txnBuilder := w.StartTransaction()
 

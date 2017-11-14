@@ -2,9 +2,12 @@ package wallet
 
 import (
 	"sort"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/NebulousLabs/Sia/types"
+	"github.com/NebulousLabs/fastrand"
 )
 
 // TestSendSiacoins probes the SendSiacoins method of the wallet.
@@ -67,6 +70,57 @@ func TestSendSiacoins(t *testing.T) {
 	}
 	if !unconfirmedIn3.Equals(types.ZeroCurrency) {
 		t.Error("unconfirmed balance should be 0")
+	}
+}
+
+// TestHighLoadSendSiacoins verifies that SendSiacoins can be used in a high
+// load scenario without errors. This is accomplished by spinning up 10 threads
+// that asynchronously call SendSiacoins with small amounts after a random
+// delay.
+func TestHighLoadSendSiacoins(t *testing.T) {
+	if testing.Short() {
+		t.SkipNow()
+	}
+	wt, err := createWalletTester(t.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wt.closeWt()
+
+	// create a few threads that sporadically send siacoins at a high frequency
+	var wg sync.WaitGroup
+	stopChan := make(chan struct{})
+	nThreads := 10
+	errs := make(chan error, nThreads)
+	for i := 0; i < nThreads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stopChan:
+					return
+				case <-time.After(time.Millisecond*50 + time.Duration(fastrand.Intn(100))*time.Millisecond):
+				}
+				_, err = wt.wallet.SendSiacoins(types.NewCurrency64(1000), types.UnlockHash{})
+				if err != nil {
+					errs <- err
+					return
+				}
+				wt.miner.AddBlock()
+			}
+		}()
+	}
+	// let these threads run for 3 seconds, then close them and check for errors.
+	time.Sleep(time.Second * 3)
+	close(stopChan)
+	wg.Wait()
+	for i := 0; i < nThreads; i++ {
+		select {
+		case err := <-errs:
+			t.Fatal(err)
+		default:
+		}
 	}
 }
 
